@@ -68,9 +68,8 @@ Alat ini dibuat **hanya untuk tujuan pendidikan dan pengujian keamanan etis**. P
 
 2.  **Jalankan skrip menggunakan Python:**
     ```bash
-    python nama_skrip.py
+    python nmitm.py
     ```
-    *(Ganti `nama_skrip.py` dengan nama file skrip Anda)*
 
 3.  **Ikuti prompt interaktif untuk memasukkan data yang diperlukan:**
     -   **Enter target IP (knocking from)**: Masukkan alamat IP dari mesin klien yang akan melakukan *port knocking*.

